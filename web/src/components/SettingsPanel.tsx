@@ -2,6 +2,7 @@ import type { WhisperModelId } from "../transcribe-worker";
 
 export interface AppSettings {
   whisperModel: WhisperModelId;
+  forceWasmTranscribe: boolean;
   useCloudSummarizer: boolean;
   cloudEndpoint: string;
   cloudApiKey: string;
@@ -12,6 +13,7 @@ const STORAGE_KEY = "meeting-transcriber:settings";
 
 export const DEFAULT_SETTINGS: AppSettings = {
   whisperModel: "onnx-community/whisper-large-v3-turbo",
+  forceWasmTranscribe: false,
   useCloudSummarizer: false,
   cloudEndpoint: "https://api.openai.com/v1/chat/completions",
   cloudApiKey: "",
@@ -58,6 +60,18 @@ export function SettingsPanel({ settings, onChange }: Props) {
           </option>
         </select>
       </label>
+
+      <label className="field checkbox">
+        <input
+          type="checkbox"
+          checked={settings.forceWasmTranscribe}
+          onChange={(e) => onChange({ ...settings, forceWasmTranscribe: e.target.checked })}
+        />
+        文字起こしでWebGPUを使わない(CPUで強制実行)
+      </label>
+      <p className="hint">
+        WebGPU使用時に文字起こしが固まって進まない場合に試してください。処理は遅くなりますが、内蔵GPU等でのWebGPU初期化の不具合を回避できることがあります。
+      </p>
 
       <label className="field checkbox">
         <input

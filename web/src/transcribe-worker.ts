@@ -9,6 +9,7 @@ export interface TranscribeRequest {
   type: "transcribe";
   audio: Float32Array;
   modelId: WhisperModelId;
+  forceWasm: boolean;
 }
 
 export type TranscribeDevice = "webgpu" | "wasm";
@@ -43,10 +44,13 @@ async function detectDevice(): Promise<TranscribeDevice> {
   }
 }
 
-async function getPipeline(modelId: WhisperModelId): Promise<AutomaticSpeechRecognitionPipeline> {
+async function getPipeline(
+  modelId: WhisperModelId,
+  forceWasm: boolean,
+): Promise<AutomaticSpeechRecognitionPipeline> {
   if (cachedPipeline && cachedModelId === modelId) return cachedPipeline;
 
-  const device = await detectDevice();
+  const device = forceWasm ? "wasm" : await detectDevice();
   self.postMessage({ type: "device", device } satisfies TranscribeWorkerMessage);
   cachedPipeline = await createPipeline("automatic-speech-recognition", modelId, {
     device,
@@ -70,11 +74,11 @@ async function getPipeline(modelId: WhisperModelId): Promise<AutomaticSpeechReco
 }
 
 self.onmessage = async (event: MessageEvent<TranscribeRequest>) => {
-  const { type, audio, modelId } = event.data;
+  const { type, audio, modelId, forceWasm } = event.data;
   if (type !== "transcribe") return;
 
   try {
-    const transcriber = await getPipeline(modelId);
+    const transcriber = await getPipeline(modelId, forceWasm);
     const startedAt = performance.now();
     let partialText = "";
     // Pipeline exposes the base tokenizer type, but at runtime whisper models use WhisperTokenizer.

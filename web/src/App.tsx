@@ -112,6 +112,7 @@ export function App() {
       const result = await transcribeAudio(
         audioBlob,
         settings.whisperModel,
+        settings.forceWasmTranscribe,
         setTranscribeProgress,
         setTranscribeDevice,
         setTranscript,

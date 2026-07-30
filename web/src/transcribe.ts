@@ -36,6 +36,7 @@ async function decodeToMono16k(blob: Blob): Promise<Float32Array> {
 export async function transcribeAudio(
   blob: Blob,
   modelId: WhisperModelId,
+  forceWasm: boolean,
   onProgress?: (p: TranscribeProgress) => void,
   onDevice?: (device: TranscribeDevice) => void,
   onPartial?: (text: string) => void,
@@ -66,6 +67,6 @@ export async function transcribeAudio(
       worker.terminate();
       reject(new Error(event.message));
     };
-    worker.postMessage({ type: "transcribe", audio, modelId }, [audio.buffer]);
+    worker.postMessage({ type: "transcribe", audio, modelId, forceWasm }, [audio.buffer]);
   });
 }
