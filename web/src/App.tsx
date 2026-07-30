@@ -197,6 +197,7 @@ export function App() {
         .filter(Boolean),
       project: project || undefined,
       meetingName: meetingName || undefined,
+      transcript: transcript || undefined,
       summaryMarkdown: summary,
     });
     downloadMarkdown(suggestFilename(date, topicSlug), content);

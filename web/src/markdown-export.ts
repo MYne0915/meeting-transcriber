@@ -5,13 +5,15 @@ export interface ExportOptions {
   project?: string;
   /** Japanese meeting name (e.g. a recurring meeting's title). If set, overrides/fills the "# 議事録: <title>" line. */
   meetingName?: string;
+  /** Full transcript text. If set, appended as a collapsible section at the end of the note. */
+  transcript?: string;
   /** LLM-generated (or manually written) body starting with "# 議事録: <title>" */
   summaryMarkdown: string;
 }
 
 /** Builds the full note contents: YAML frontmatter + "# 議事録: ..." body with a **日時** line inserted. */
 export function buildMeetingMinutesMarkdown(options: ExportOptions): string {
-  const { date, tags, project, meetingName, summaryMarkdown } = options;
+  const { date, tags, project, meetingName, transcript, summaryMarkdown } = options;
 
   const frontmatter = [
     "---",
@@ -39,7 +41,11 @@ export function buildMeetingMinutesMarkdown(options: ExportOptions): string {
   }
   const body = lines.join("\n").trimEnd();
 
-  return `${frontmatter}\n${body}\n`;
+  const transcriptSection = transcript?.trim()
+    ? `\n\n## 文字起こし全文\n\n<details>\n<summary>クリックして展開</summary>\n\n${transcript.trim()}\n\n</details>\n`
+    : "";
+
+  return `${frontmatter}\n${body}${transcriptSection}\n`;
 }
 
 /** Matches the existing Vault convention: YYYY-MM-DD-topic-meeting-minutes.md */
