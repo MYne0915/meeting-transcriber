@@ -59,17 +59,20 @@ export function TranscriptView({
           モデル読み込み中: {progress.file} ({Math.round(progress.progress)}%)
         </p>
       )}
-      {transcribing && !progress && transcript.length === 0 && (
+      {transcribing && progress && waitedSeconds >= 60 && (
         <p className="hint">
-          音声を解析しています…(初回はモデルのダウンロードに時間がかかります。WebGPU使用時はモデル初期化に数分かかることがあります)
+          ダウンロードに時間がかかっています。パーセントが少しずつでも進んでいれば異常ではありません(回線が遅いだけです)。一度ダウンロードすればブラウザにキャッシュされるため、次回以降はこの待ち時間は発生しません。
         </p>
+      )}
+      {transcribing && !progress && transcript.length === 0 && (
+        <p className="hint">音声を解析しています…</p>
       )}
       {transcribing && !progress && transcript.length > 0 && (
         <p className="hint">生成中…(下のテキストはリアルタイムで更新されます)</p>
       )}
-      {transcribing && waitedSeconds >= 90 && transcript.length === 0 && (
+      {transcribing && !progress && waitedSeconds >= 90 && transcript.length === 0 && (
         <p className="warning">
-          90秒以上、文字が全く表示されていません。WebGPUの初期化が固まっている可能性があります。下の設定で「WebGPUを使わない(CPUで強制実行)」を試してください。
+          モデルの読み込みは完了しているのに90秒以上、文字が全く表示されていません。WebGPUの初期化が固まっている可能性があります。下の設定で「WebGPUを使わない(CPUで強制実行)」を試してください。
         </p>
       )}
       {!transcribing && elapsedMs != null && (
