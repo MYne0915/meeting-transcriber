@@ -3,6 +3,12 @@ import "./App.css";
 import { type CaptureOptions, type CaptureSession, startCapture } from "./audio-capture";
 import { buildMeetingMinutesMarkdown, downloadMarkdown, suggestFilename } from "./markdown-export";
 import {
+  loadMeetingNameHistory,
+  loadProjectHistory,
+  rememberMeetingName,
+  rememberProject,
+} from "./name-history";
+import {
   type SummarizeProgress,
   isLocalSummarizerLoaded,
   isWebGPUAvailable,
@@ -51,7 +57,16 @@ export function App() {
   const [date, setDate] = useState(todayIso());
   const [tags, setTags] = useState("mizuho, meeting");
   const [project, setProject] = useState("");
+  const [meetingName, setMeetingName] = useState("");
   const [topicSlug, setTopicSlug] = useState("");
+  const [meetingNameHistory, setMeetingNameHistory] = useState(() => loadMeetingNameHistory());
+  const [projectHistory, setProjectHistory] = useState(() => loadProjectHistory());
+
+  function handleMeetingNameChange(name: string) {
+    setMeetingName(name);
+    const known = meetingNameHistory.find((entry) => entry.title === name);
+    if (known) setTopicSlug(known.slug);
+  }
 
   useEffect(() => {
     setSettings(loadSettings());
@@ -162,9 +177,19 @@ export function App() {
         .map((t) => t.trim())
         .filter(Boolean),
       project: project || undefined,
+      meetingName: meetingName || undefined,
       summaryMarkdown: summary,
     });
     downloadMarkdown(suggestFilename(date, topicSlug), content);
+
+    if (meetingName) {
+      rememberMeetingName(meetingName, topicSlug);
+      setMeetingNameHistory(loadMeetingNameHistory());
+    }
+    if (project) {
+      rememberProject(project);
+      setProjectHistory(loadProjectHistory());
+    }
   }
 
   return (
@@ -217,11 +242,31 @@ export function App() {
             <input type="text" value={tags} onChange={(e) => setTags(e.target.value)} />
           </label>
           <label className="field">
-            プロジェクト(任意)
-            <input type="text" value={project} onChange={(e) => setProject(e.target.value)} />
+            会議名(過去に入力した定例名がリストに出ます。初回は自由入力してください)
+            <input
+              type="text"
+              list="meeting-name-options"
+              value={meetingName}
+              onChange={(e) => handleMeetingNameChange(e.target.value)}
+              placeholder="例: 回路定例"
+            />
+            <datalist id="meeting-name-options">
+              {meetingNameHistory.map((entry) => (
+                <option key={entry.slug} value={entry.title} />
+              ))}
+            </datalist>
           </label>
           <label className="field">
-            ファイル名の話題部分(例: circuit-teirei)
+            プロジェクト(任意、過去の入力がリストに出ます)
+            <input type="text" list="project-options" value={project} onChange={(e) => setProject(e.target.value)} />
+            <datalist id="project-options">
+              {projectHistory.map((p) => (
+                <option key={p} value={p} />
+              ))}
+            </datalist>
+          </label>
+          <label className="field">
+            ファイル名(スラッグ、会議名選択で自動入力)
             <input
               type="text"
               value={topicSlug}

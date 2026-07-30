@@ -3,13 +3,15 @@ export interface ExportOptions {
   date: string;
   tags: string[];
   project?: string;
+  /** Japanese meeting name (e.g. "回路定例"). If set, overrides/fills the "# 議事録: <title>" line. */
+  meetingName?: string;
   /** LLM-generated (or manually written) body starting with "# 議事録: <title>" */
   summaryMarkdown: string;
 }
 
 /** Builds the full note contents: YAML frontmatter + "# 議事録: ..." body with a **日時** line inserted. */
 export function buildMeetingMinutesMarkdown(options: ExportOptions): string {
-  const { date, tags, project, summaryMarkdown } = options;
+  const { date, tags, project, meetingName, summaryMarkdown } = options;
 
   const frontmatter = [
     "---",
@@ -23,8 +25,17 @@ export function buildMeetingMinutesMarkdown(options: ExportOptions): string {
 
   const lines = summaryMarkdown.trimStart().split("\n");
   const titleLineIndex = lines.findIndex((line) => line.startsWith("# "));
-  if (titleLineIndex !== -1 && !lines.some((line) => line.startsWith("**日時**"))) {
-    lines.splice(titleLineIndex + 1, 0, "", `**日時**: ${date}`);
+  if (meetingName) {
+    const titleLine = `# 議事録: ${meetingName}`;
+    if (titleLineIndex !== -1) {
+      lines[titleLineIndex] = titleLine;
+    } else {
+      lines.unshift(titleLine, "");
+    }
+  }
+  const resolvedTitleLineIndex = lines.findIndex((line) => line.startsWith("# "));
+  if (resolvedTitleLineIndex !== -1 && !lines.some((line) => line.startsWith("**日時**"))) {
+    lines.splice(resolvedTitleLineIndex + 1, 0, "", `**日時**: ${date}`);
   }
   const body = lines.join("\n").trimEnd();
 
