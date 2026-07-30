@@ -7,6 +7,7 @@ interface Props {
   progress: TranscribeProgress | null;
   device: TranscribeDevice | null;
   elapsedMs: number | null;
+  segmentProgress: { current: number; total: number } | null;
   transcript: string;
   onTranscribe: () => void;
   onChangeTranscript: (text: string) => void;
@@ -22,6 +23,7 @@ export function TranscriptView({
   progress,
   device,
   elapsedMs,
+  segmentProgress,
   transcript,
   onTranscribe,
   onChangeTranscript,
@@ -33,9 +35,12 @@ export function TranscriptView({
       setWaitedSeconds(0);
       return;
     }
+    setWaitedSeconds(0);
     const interval = setInterval(() => setWaitedSeconds((s) => s + 1), 1000);
     return () => clearInterval(interval);
-  }, [transcribing]);
+    // Resets the per-segment stall timer whenever a new segment starts, not just on transcribing start/stop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [transcribing, segmentProgress?.current]);
 
   return (
     <section className="card">
@@ -47,6 +52,12 @@ export function TranscriptView({
         </button>
       </div>
 
+      {segmentProgress && segmentProgress.total > 1 && (
+        <p className="hint">
+          長い録音のため{segmentProgress.total}分割で処理中: セグメント {segmentProgress.current}/
+          {segmentProgress.total}
+        </p>
+      )}
       {device && (
         <p className={device === "webgpu" ? "hint" : "warning"}>
           {device === "webgpu"

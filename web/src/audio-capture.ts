@@ -1,11 +1,17 @@
 export interface CaptureOptions {
   includeMic: boolean;
   includeSystemAudio: boolean;
+  /**
+   * Recording is split into segments of this length so a long meeting never needs a single
+   * huge decode/transcribe pass (decoding a multi-hour blob in one go can use several GB of
+   * RAM and crash the tab). Default 10 minutes.
+   */
+  segmentSeconds?: number;
 }
 
 export interface CaptureSession {
-  /** Stops all tracks and the recorder, returns the recorded audio as a single Blob. */
-  stop: () => Promise<Blob>;
+  /** Stops all tracks and the recorder, returns each recorded segment as an independent Blob. */
+  stop: () => Promise<Blob[]>;
 }
 
 const RECORDER_MIME_CANDIDATES = [
@@ -66,23 +72,59 @@ export async function startCapture(options: CaptureOptions): Promise<CaptureSess
   });
 
   const mimeType = pickMimeType();
-  const recorder = new MediaRecorder(destination.stream, mimeType ? { mimeType } : undefined);
-  const chunks: BlobPart[] = [];
-  recorder.ondataavailable = (event) => {
-    if (event.data.size > 0) chunks.push(event.data);
-  };
+  const segmentSeconds = options.segmentSeconds ?? 600;
+  const segments: Blob[] = [];
+  let chunks: BlobPart[] = [];
+  let recorder: MediaRecorder;
+  let stopping = false;
 
-  const recordingStopped = new Promise<void>((resolve) => {
-    recorder.onstop = () => resolve();
-  });
-  recorder.start(1000);
+  function finalizeSegment(): void {
+    if (chunks.length === 0) return;
+    segments.push(new Blob(chunks, { type: mimeType ?? "audio/webm" }));
+    chunks = [];
+  }
 
-  const stop = async (): Promise<Blob> => {
+  function waitForStop(rec: MediaRecorder): Promise<void> {
+    return new Promise((resolve) => {
+      rec.onstop = () => resolve();
+    });
+  }
+
+  function startRecorder(): void {
+    recorder = new MediaRecorder(destination.stream, mimeType ? { mimeType } : undefined);
+    recorder.ondataavailable = (event) => {
+      if (event.data.size > 0) chunks.push(event.data);
+    };
+    recorder.start(1000);
+  }
+
+  startRecorder();
+
+  // Every segmentSeconds, stop the recorder (finalizing a standalone, independently
+  // decodable WebM file for that segment) and immediately start a fresh one on the same
+  // stream. This causes a brief (sub-second) gap in the recording at each rotation.
+  const rotateTimer = setInterval(() => {
+    if (stopping) return;
+    void (async () => {
+      const finishedRecorder = recorder;
+      const stopped = waitForStop(finishedRecorder);
+      finishedRecorder.stop();
+      await stopped;
+      finalizeSegment();
+      if (!stopping) startRecorder();
+    })();
+  }, segmentSeconds * 1000);
+
+  const stop = async (): Promise<Blob[]> => {
+    stopping = true;
+    clearInterval(rotateTimer);
+    const stopped = waitForStop(recorder);
     recorder.stop();
-    await recordingStopped;
+    await stopped;
+    finalizeSegment();
     rawStreams.forEach((stream) => stream.getTracks().forEach((track) => track.stop()));
     await audioContext.close();
-    return new Blob(chunks, { type: mimeType ?? "audio/webm" });
+    return segments;
   };
 
   return { stop };

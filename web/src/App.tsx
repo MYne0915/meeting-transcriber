@@ -18,7 +18,7 @@ import {
   summarizeLocally,
   summarizeViaCloudApi,
 } from "./summarize";
-import { type TranscribeDevice, type TranscribeProgress, transcribeAudio } from "./transcribe";
+import { type TranscribeDevice, type TranscribeProgress, createTranscribeSession } from "./transcribe";
 import { DEFAULT_SETTINGS, SettingsPanel, loadSettings, saveSettings } from "./components/SettingsPanel";
 import { RecorderPanel } from "./components/RecorderPanel";
 import { TranscriptView } from "./components/TranscriptView";
@@ -43,12 +43,16 @@ export function App() {
   const [elapsedMs, setElapsedMs] = useState(0);
   const sessionRef = useRef<CaptureSession | null>(null);
   const recordingStartRef = useRef(0);
-  const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
+  const [audioSegments, setAudioSegments] = useState<Blob[]>([]);
 
   const [transcribing, setTranscribing] = useState(false);
   const [transcribeProgress, setTranscribeProgress] = useState<TranscribeProgress | null>(null);
   const [transcribeDevice, setTranscribeDevice] = useState<TranscribeDevice | null>(null);
   const [transcribeElapsedMs, setTranscribeElapsedMs] = useState<number | null>(null);
+  const [transcribeSegmentProgress, setTranscribeSegmentProgress] = useState<{
+    current: number;
+    total: number;
+  } | null>(null);
   const [transcript, setTranscript] = useState("");
 
   const [summarizing, setSummarizing] = useState(false);
@@ -94,7 +98,7 @@ export function App() {
       sessionRef.current = session;
       recordingStartRef.current = Date.now();
       setElapsedMs(0);
-      setAudioBlob(null);
+      setAudioSegments([]);
       setTranscript("");
       setSummary("");
       setRecording(true);
@@ -107,8 +111,8 @@ export function App() {
     const session = sessionRef.current;
     if (!session) return;
     try {
-      const blob = await session.stop();
-      setAudioBlob(blob);
+      const segments = await session.stop();
+      setAudioSegments(segments);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -118,28 +122,41 @@ export function App() {
   }
 
   async function handleTranscribe() {
-    if (!audioBlob) return;
+    if (audioSegments.length === 0) return;
     setError(null);
     setTranscribing(true);
     setTranscribeProgress(null);
     setTranscribeDevice(null);
     setTranscribeElapsedMs(null);
+    setTranscribeSegmentProgress(null);
     setTranscript("");
+
+    // One Worker (and its loaded model) is reused across all segments, so only the first
+    // segment pays the model load/init cost — important for long recordings with many segments.
+    const session = createTranscribeSession(settings.whisperModel, settings.forceWasmTranscribe);
     try {
-      const result = await transcribeAudio(
-        audioBlob,
-        settings.whisperModel,
-        settings.forceWasmTranscribe,
-        setTranscribeProgress,
-        setTranscribeDevice,
-        setTranscript,
-      );
-      setTranscript(result.text);
-      setTranscribeElapsedMs(result.elapsedMs);
+      let combinedText = "";
+      let totalElapsedMs = 0;
+      for (let i = 0; i < audioSegments.length; i++) {
+        setTranscribeSegmentProgress({ current: i + 1, total: audioSegments.length });
+        const prefix = combinedText ? `${combinedText}\n\n` : "";
+        const result = await session.transcribeSegment(
+          audioSegments[i],
+          setTranscribeProgress,
+          setTranscribeDevice,
+          (partial) => setTranscript(prefix + partial),
+        );
+        combinedText = prefix + result.text;
+        totalElapsedMs += result.elapsedMs;
+        setTranscript(combinedText);
+      }
+      setTranscribeElapsedMs(totalElapsedMs);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
+      session.terminate();
       setTranscribing(false);
+      setTranscribeSegmentProgress(null);
     }
   }
 
@@ -212,11 +229,12 @@ export function App() {
       />
 
       <TranscriptView
-        hasAudio={audioBlob != null}
+        hasAudio={audioSegments.length > 0}
         transcribing={transcribing}
         progress={transcribeProgress}
         device={transcribeDevice}
         elapsedMs={transcribeElapsedMs}
+        segmentProgress={transcribeSegmentProgress}
         transcript={transcript}
         onTranscribe={handleTranscribe}
         onChangeTranscript={setTranscript}

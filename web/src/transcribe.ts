@@ -32,41 +32,56 @@ async function decodeToMono16k(blob: Blob): Promise<Float32Array> {
   return rendered.getChannelData(0);
 }
 
-/** Decodes the recorded blob, then transcribes it in a Web Worker (off the UI thread). */
-export async function transcribeAudio(
-  blob: Blob,
-  modelId: WhisperModelId,
-  forceWasm: boolean,
-  onProgress?: (p: TranscribeProgress) => void,
-  onDevice?: (device: TranscribeDevice) => void,
-  onPartial?: (text: string) => void,
-): Promise<TranscribeResult> {
-  const audio = await decodeToMono16k(blob);
+export interface TranscribeSession {
+  /**
+   * Decodes one segment blob and transcribes it using the session's Worker. The Worker (and
+   * its loaded model) is reused across segments, so only the first segment pays the model
+   * load/init cost.
+   */
+  transcribeSegment: (
+    blob: Blob,
+    onProgress?: (p: TranscribeProgress) => void,
+    onDevice?: (device: TranscribeDevice) => void,
+    onPartial?: (text: string) => void,
+  ) => Promise<TranscribeResult>;
+  terminate: () => void;
+}
+
+/** Creates a Worker that stays alive across multiple transcribeSegment() calls. */
+export function createTranscribeSession(modelId: WhisperModelId, forceWasm: boolean): TranscribeSession {
   const worker = new Worker(new URL("./transcribe-worker.ts", import.meta.url), {
     type: "module",
   });
 
-  return new Promise((resolve, reject) => {
-    worker.onmessage = (event: MessageEvent<TranscribeWorkerMessage>) => {
-      const msg = event.data;
-      if (msg.type === "device") {
-        onDevice?.(msg.device);
-      } else if (msg.type === "loading") {
-        onProgress?.({ file: msg.file, progress: msg.progress });
-      } else if (msg.type === "partial") {
-        onPartial?.(msg.text);
-      } else if (msg.type === "result") {
-        worker.terminate();
-        resolve({ text: msg.text, elapsedMs: msg.elapsedMs });
-      } else if (msg.type === "error") {
-        worker.terminate();
-        reject(new Error(msg.message));
-      }
-    };
-    worker.onerror = (event) => {
-      worker.terminate();
-      reject(new Error(event.message));
-    };
-    worker.postMessage({ type: "transcribe", audio, modelId, forceWasm }, [audio.buffer]);
-  });
+  async function transcribeSegment(
+    blob: Blob,
+    onProgress?: (p: TranscribeProgress) => void,
+    onDevice?: (device: TranscribeDevice) => void,
+    onPartial?: (text: string) => void,
+  ): Promise<TranscribeResult> {
+    const audio = await decodeToMono16k(blob);
+
+    return new Promise((resolve, reject) => {
+      worker.onmessage = (event: MessageEvent<TranscribeWorkerMessage>) => {
+        const msg = event.data;
+        if (msg.type === "device") {
+          onDevice?.(msg.device);
+        } else if (msg.type === "loading") {
+          onProgress?.({ file: msg.file, progress: msg.progress });
+        } else if (msg.type === "partial") {
+          onPartial?.(msg.text);
+        } else if (msg.type === "result") {
+          resolve({ text: msg.text, elapsedMs: msg.elapsedMs });
+        } else if (msg.type === "error") {
+          reject(new Error(msg.message));
+        }
+      };
+      worker.onerror = (event) => {
+        reject(new Error(event.message));
+      };
+      worker.postMessage({ type: "transcribe", audio, modelId, forceWasm }, [audio.buffer]);
+    });
+  }
+
+  return { transcribeSegment, terminate: () => worker.terminate() };
 }
