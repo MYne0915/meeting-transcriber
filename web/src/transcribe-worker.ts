@@ -55,7 +55,11 @@ async function getPipeline(
   cachedPipeline = await createPipeline("automatic-speech-recognition", modelId, {
     device,
     dtype: {
-      encoder_model: "fp32",
+      // fp32 encoder exceeds 2GB, forcing onnxruntime-web's external-data (.onnx_data) loading
+      // path, which is broken for these models (fails with "Module.MountedFiles is not
+      // available" — see https://github.com/huggingface/transformers.js/issues/989). fp16
+      // keeps the encoder under 2GB and avoids external data entirely.
+      encoder_model: "fp16",
       decoder_model_merged: "q4",
     },
     progress_callback: (data: { status: string; file?: string; progress?: number }) => {
