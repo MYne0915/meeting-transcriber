@@ -47,7 +47,12 @@ export function TranscriptView({
           モデル読み込み中: {progress.file} ({Math.round(progress.progress)}%)
         </p>
       )}
-      {transcribing && !progress && <p className="hint">音声を解析しています…(初回はモデルのダウンロードに時間がかかります)</p>}
+      {transcribing && !progress && transcript.length === 0 && (
+        <p className="hint">音声を解析しています…(初回はモデルのダウンロードに時間がかかります)</p>
+      )}
+      {transcribing && !progress && transcript.length > 0 && (
+        <p className="hint">生成中…(下のテキストはリアルタイムで更新されます)</p>
+      )}
       {!transcribing && elapsedMs != null && (
         <p className="hint">文字起こし完了(処理時間: {formatSeconds(elapsedMs)})</p>
       )}

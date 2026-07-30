@@ -107,12 +107,14 @@ export function App() {
     setTranscribeProgress(null);
     setTranscribeDevice(null);
     setTranscribeElapsedMs(null);
+    setTranscript("");
     try {
       const result = await transcribeAudio(
         audioBlob,
         settings.whisperModel,
         setTranscribeProgress,
         setTranscribeDevice,
+        setTranscript,
       );
       setTranscript(result.text);
       setTranscribeElapsedMs(result.elapsedMs);

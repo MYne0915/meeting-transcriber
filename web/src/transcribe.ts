@@ -38,6 +38,7 @@ export async function transcribeAudio(
   modelId: WhisperModelId,
   onProgress?: (p: TranscribeProgress) => void,
   onDevice?: (device: TranscribeDevice) => void,
+  onPartial?: (text: string) => void,
 ): Promise<TranscribeResult> {
   const audio = await decodeToMono16k(blob);
   const worker = new Worker(new URL("./transcribe-worker.ts", import.meta.url), {
@@ -51,6 +52,8 @@ export async function transcribeAudio(
         onDevice?.(msg.device);
       } else if (msg.type === "loading") {
         onProgress?.({ file: msg.file, progress: msg.progress });
+      } else if (msg.type === "partial") {
+        onPartial?.(msg.text);
       } else if (msg.type === "result") {
         worker.terminate();
         resolve({ text: msg.text, elapsedMs: msg.elapsedMs });

@@ -1,5 +1,5 @@
 /// <reference lib="webworker" />
-import { pipeline, type AutomaticSpeechRecognitionPipeline } from "@huggingface/transformers";
+import { pipeline, WhisperTextStreamer, type AutomaticSpeechRecognitionPipeline } from "@huggingface/transformers";
 
 export type WhisperModelId =
   | "onnx-community/whisper-large-v3-turbo"
@@ -16,6 +16,7 @@ export type TranscribeDevice = "webgpu" | "wasm";
 export type TranscribeWorkerMessage =
   | { type: "device"; device: TranscribeDevice }
   | { type: "loading"; progress: number; file: string }
+  | { type: "partial"; text: string }
   | { type: "result"; text: string; elapsedMs: number }
   | { type: "error"; message: string };
 
@@ -75,11 +76,24 @@ self.onmessage = async (event: MessageEvent<TranscribeRequest>) => {
   try {
     const transcriber = await getPipeline(modelId);
     const startedAt = performance.now();
+    let partialText = "";
+    // Pipeline exposes the base tokenizer type, but at runtime whisper models use WhisperTokenizer.
+    const streamer = new WhisperTextStreamer(transcriber.tokenizer as never, {
+      skip_prompt: true,
+      callback_function: (piece: string) => {
+        partialText += piece;
+        self.postMessage({ type: "partial", text: partialText } satisfies TranscribeWorkerMessage);
+      },
+      on_chunk_start: () => {
+        if (partialText.length > 0) partialText += "\n";
+      },
+    });
     const output = await transcriber(audio, {
       language: "japanese",
       chunk_length_s: 30,
       stride_length_s: 5,
       return_timestamps: false,
+      streamer,
     });
     const text = Array.isArray(output) ? output.map((o) => o.text).join("\n") : output.text;
     const message: TranscribeWorkerMessage = { type: "result", text, elapsedMs: performance.now() - startedAt };
