@@ -6,6 +6,7 @@
 
 const MEETING_NAME_HISTORY_KEY = "meeting-transcriber:meeting-name-history";
 const PROJECT_HISTORY_KEY = "meeting-transcriber:project-history";
+const LAST_TAGS_KEY = "meeting-transcriber:last-tags";
 const MAX_HISTORY = 20;
 
 export interface MeetingNameEntry {
@@ -42,4 +43,18 @@ export function rememberProject(project: string): void {
   const history = loadProjectHistory().filter((p) => p !== project);
   history.unshift(project);
   localStorage.setItem(PROJECT_HISTORY_KEY, JSON.stringify(history.slice(0, MAX_HISTORY)));
+}
+
+/** Last-used tags string, so the field defaults to what this user typed last time instead of a hardcoded value. */
+export function loadLastTags(): string {
+  try {
+    return localStorage.getItem(LAST_TAGS_KEY) ?? "meeting";
+  } catch {
+    return "meeting";
+  }
+}
+
+export function rememberTags(tags: string): void {
+  if (!tags.trim()) return;
+  localStorage.setItem(LAST_TAGS_KEY, tags);
 }

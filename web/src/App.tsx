@@ -3,10 +3,12 @@ import "./App.css";
 import { type CaptureOptions, type CaptureSession, startCapture } from "./audio-capture";
 import { buildMeetingMinutesMarkdown, downloadMarkdown, suggestFilename } from "./markdown-export";
 import {
+  loadLastTags,
   loadMeetingNameHistory,
   loadProjectHistory,
   rememberMeetingName,
   rememberProject,
+  rememberTags,
 } from "./name-history";
 import {
   type SummarizeProgress,
@@ -55,7 +57,7 @@ export function App() {
   const [webGPUAvailable, setWebGPUAvailable] = useState<boolean | null>(null);
 
   const [date, setDate] = useState(todayIso());
-  const [tags, setTags] = useState("mizuho, meeting");
+  const [tags, setTags] = useState(() => loadLastTags());
   const [project, setProject] = useState("");
   const [meetingName, setMeetingName] = useState("");
   const [topicSlug, setTopicSlug] = useState("");
@@ -190,6 +192,7 @@ export function App() {
       rememberProject(project);
       setProjectHistory(loadProjectHistory());
     }
+    rememberTags(tags);
   }
 
   return (
@@ -248,7 +251,7 @@ export function App() {
               list="meeting-name-options"
               value={meetingName}
               onChange={(e) => handleMeetingNameChange(e.target.value)}
-              placeholder="例: 回路定例"
+              placeholder="定例会議名など"
             />
             <datalist id="meeting-name-options">
               {meetingNameHistory.map((entry) => (
@@ -276,7 +279,7 @@ export function App() {
           </label>
         </div>
         <p className="hint">
-          ダウンロード後、Obsidian Vaultの Meetings/ フォルダに手動で配置してください(会社PCから個人Vaultへの自動同期は行いません)。
+          ダウンロード後、メール添付やクラウドストレージなど任意の方法でVaultのある端末に転送し、Meetings/ フォルダへ配置してください(このPCからの自動同期は行いません)。
         </p>
         <div className="row">
           <button type="button" className="primary" disabled={!summary} onClick={handleDownload}>

@@ -3,7 +3,7 @@ export interface ExportOptions {
   date: string;
   tags: string[];
   project?: string;
-  /** Japanese meeting name (e.g. "回路定例"). If set, overrides/fills the "# 議事録: <title>" line. */
+  /** Japanese meeting name (e.g. a recurring meeting's title). If set, overrides/fills the "# 議事録: <title>" line. */
   meetingName?: string;
   /** LLM-generated (or manually written) body starting with "# 議事録: <title>" */
   summaryMarkdown: string;
