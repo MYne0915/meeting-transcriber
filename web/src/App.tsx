@@ -10,7 +10,7 @@ import {
   summarizeLocally,
   summarizeViaCloudApi,
 } from "./summarize";
-import { type TranscribeProgress, transcribeAudio } from "./transcribe";
+import { type TranscribeDevice, type TranscribeProgress, transcribeAudio } from "./transcribe";
 import { DEFAULT_SETTINGS, SettingsPanel, loadSettings, saveSettings } from "./components/SettingsPanel";
 import { RecorderPanel } from "./components/RecorderPanel";
 import { TranscriptView } from "./components/TranscriptView";
@@ -39,6 +39,8 @@ export function App() {
 
   const [transcribing, setTranscribing] = useState(false);
   const [transcribeProgress, setTranscribeProgress] = useState<TranscribeProgress | null>(null);
+  const [transcribeDevice, setTranscribeDevice] = useState<TranscribeDevice | null>(null);
+  const [transcribeElapsedMs, setTranscribeElapsedMs] = useState<number | null>(null);
   const [transcript, setTranscript] = useState("");
 
   const [summarizing, setSummarizing] = useState(false);
@@ -103,9 +105,17 @@ export function App() {
     setError(null);
     setTranscribing(true);
     setTranscribeProgress(null);
+    setTranscribeDevice(null);
+    setTranscribeElapsedMs(null);
     try {
-      const text = await transcribeAudio(audioBlob, settings.whisperModel, setTranscribeProgress);
-      setTranscript(text);
+      const result = await transcribeAudio(
+        audioBlob,
+        settings.whisperModel,
+        setTranscribeProgress,
+        setTranscribeDevice,
+      );
+      setTranscript(result.text);
+      setTranscribeElapsedMs(result.elapsedMs);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -174,6 +184,8 @@ export function App() {
         hasAudio={audioBlob != null}
         transcribing={transcribing}
         progress={transcribeProgress}
+        device={transcribeDevice}
+        elapsedMs={transcribeElapsedMs}
         transcript={transcript}
         onTranscribe={handleTranscribe}
         onChangeTranscript={setTranscript}

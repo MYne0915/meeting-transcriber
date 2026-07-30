@@ -1,8 +1,15 @@
-import type { TranscribeWorkerMessage, WhisperModelId } from "./transcribe-worker";
+import type { TranscribeDevice, TranscribeWorkerMessage, WhisperModelId } from "./transcribe-worker";
+
+export type { TranscribeDevice };
 
 export interface TranscribeProgress {
   file: string;
   progress: number;
+}
+
+export interface TranscribeResult {
+  text: string;
+  elapsedMs: number;
 }
 
 async function decodeToMono16k(blob: Blob): Promise<Float32Array> {
@@ -30,7 +37,8 @@ export async function transcribeAudio(
   blob: Blob,
   modelId: WhisperModelId,
   onProgress?: (p: TranscribeProgress) => void,
-): Promise<string> {
+  onDevice?: (device: TranscribeDevice) => void,
+): Promise<TranscribeResult> {
   const audio = await decodeToMono16k(blob);
   const worker = new Worker(new URL("./transcribe-worker.ts", import.meta.url), {
     type: "module",
@@ -39,11 +47,13 @@ export async function transcribeAudio(
   return new Promise((resolve, reject) => {
     worker.onmessage = (event: MessageEvent<TranscribeWorkerMessage>) => {
       const msg = event.data;
-      if (msg.type === "loading") {
+      if (msg.type === "device") {
+        onDevice?.(msg.device);
+      } else if (msg.type === "loading") {
         onProgress?.({ file: msg.file, progress: msg.progress });
       } else if (msg.type === "result") {
         worker.terminate();
-        resolve(msg.text);
+        resolve({ text: msg.text, elapsedMs: msg.elapsedMs });
       } else if (msg.type === "error") {
         worker.terminate();
         reject(new Error(msg.message));

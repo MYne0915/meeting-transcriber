@@ -11,9 +11,12 @@ export interface TranscribeRequest {
   modelId: WhisperModelId;
 }
 
+export type TranscribeDevice = "webgpu" | "wasm";
+
 export type TranscribeWorkerMessage =
+  | { type: "device"; device: TranscribeDevice }
   | { type: "loading"; progress: number; file: string }
-  | { type: "result"; text: string }
+  | { type: "result"; text: string; elapsedMs: number }
   | { type: "error"; message: string };
 
 let cachedModelId: WhisperModelId | undefined;
@@ -27,12 +30,25 @@ const createPipeline = pipeline as unknown as (
   options: Record<string, unknown>,
 ) => Promise<AutomaticSpeechRecognitionPipeline>;
 
+/** Actual adapter availability, not just API presence (navigator.gpu can exist with no usable adapter). */
+async function detectDevice(): Promise<TranscribeDevice> {
+  const gpu = (navigator as Navigator & { gpu?: { requestAdapter: () => Promise<unknown> } }).gpu;
+  if (!gpu) return "wasm";
+  try {
+    const adapter = await gpu.requestAdapter();
+    return adapter != null ? "webgpu" : "wasm";
+  } catch {
+    return "wasm";
+  }
+}
+
 async function getPipeline(modelId: WhisperModelId): Promise<AutomaticSpeechRecognitionPipeline> {
   if (cachedPipeline && cachedModelId === modelId) return cachedPipeline;
 
-  const hasWebGPU = "gpu" in navigator;
+  const device = await detectDevice();
+  self.postMessage({ type: "device", device } satisfies TranscribeWorkerMessage);
   cachedPipeline = await createPipeline("automatic-speech-recognition", modelId, {
-    device: hasWebGPU ? "webgpu" : "wasm",
+    device,
     dtype: {
       encoder_model: "fp32",
       decoder_model_merged: "q4",
@@ -58,6 +74,7 @@ self.onmessage = async (event: MessageEvent<TranscribeRequest>) => {
 
   try {
     const transcriber = await getPipeline(modelId);
+    const startedAt = performance.now();
     const output = await transcriber(audio, {
       language: "japanese",
       chunk_length_s: 30,
@@ -65,7 +82,7 @@ self.onmessage = async (event: MessageEvent<TranscribeRequest>) => {
       return_timestamps: false,
     });
     const text = Array.isArray(output) ? output.map((o) => o.text).join("\n") : output.text;
-    const message: TranscribeWorkerMessage = { type: "result", text };
+    const message: TranscribeWorkerMessage = { type: "result", text, elapsedMs: performance.now() - startedAt };
     self.postMessage(message);
   } catch (err) {
     const message: TranscribeWorkerMessage = {

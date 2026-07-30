@@ -1,18 +1,26 @@
-import type { TranscribeProgress } from "../transcribe";
+import type { TranscribeDevice, TranscribeProgress } from "../transcribe";
 
 interface Props {
   hasAudio: boolean;
   transcribing: boolean;
   progress: TranscribeProgress | null;
+  device: TranscribeDevice | null;
+  elapsedMs: number | null;
   transcript: string;
   onTranscribe: () => void;
   onChangeTranscript: (text: string) => void;
+}
+
+function formatSeconds(ms: number): string {
+  return `${(ms / 1000).toFixed(1)}秒`;
 }
 
 export function TranscriptView({
   hasAudio,
   transcribing,
   progress,
+  device,
+  elapsedMs,
   transcript,
   onTranscribe,
   onChangeTranscript,
@@ -27,12 +35,22 @@ export function TranscriptView({
         </button>
       </div>
 
+      {device && (
+        <p className={device === "webgpu" ? "hint" : "warning"}>
+          {device === "webgpu"
+            ? "⚡ WebGPUを検出しました(GPUで実行中)"
+            : "⚠ WebGPUが使えないため、CPU(WASM)で実行中です。時間がかかることがあります"}
+        </p>
+      )}
       {transcribing && progress && (
         <p className="hint">
           モデル読み込み中: {progress.file} ({Math.round(progress.progress)}%)
         </p>
       )}
       {transcribing && !progress && <p className="hint">音声を解析しています…(初回はモデルのダウンロードに時間がかかります)</p>}
+      {!transcribing && elapsedMs != null && (
+        <p className="hint">文字起こし完了(処理時間: {formatSeconds(elapsedMs)})</p>
+      )}
 
       <textarea
         className="transcript"
