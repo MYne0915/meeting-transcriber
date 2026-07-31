@@ -9,11 +9,6 @@ const PROJECT_HISTORY_KEY = "meeting-transcriber:project-history";
 const LAST_TAGS_KEY = "meeting-transcriber:last-tags";
 const MAX_HISTORY = 20;
 
-export interface MeetingNameEntry {
-  title: string;
-  slug: string;
-}
-
 function loadJson<T>(key: string, fallback: T): T {
   try {
     const raw = localStorage.getItem(key);
@@ -23,14 +18,14 @@ function loadJson<T>(key: string, fallback: T): T {
   }
 }
 
-export function loadMeetingNameHistory(): MeetingNameEntry[] {
-  return loadJson<MeetingNameEntry[]>(MEETING_NAME_HISTORY_KEY, []);
+export function loadMeetingNameHistory(): string[] {
+  return loadJson<string[]>(MEETING_NAME_HISTORY_KEY, []);
 }
 
-export function rememberMeetingName(title: string, slug: string): void {
+export function rememberMeetingName(title: string): void {
   if (!title.trim()) return;
-  const history = loadMeetingNameHistory().filter((entry) => entry.title !== title);
-  history.unshift({ title, slug });
+  const history = loadMeetingNameHistory().filter((entry) => entry !== title);
+  history.unshift(title);
   localStorage.setItem(MEETING_NAME_HISTORY_KEY, JSON.stringify(history.slice(0, MAX_HISTORY)));
 }
 

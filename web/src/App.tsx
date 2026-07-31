@@ -64,15 +64,8 @@ export function App() {
   const [tags, setTags] = useState(() => loadLastTags());
   const [project, setProject] = useState("");
   const [meetingName, setMeetingName] = useState("");
-  const [topicSlug, setTopicSlug] = useState("");
   const [meetingNameHistory, setMeetingNameHistory] = useState(() => loadMeetingNameHistory());
   const [projectHistory, setProjectHistory] = useState(() => loadProjectHistory());
-
-  function handleMeetingNameChange(name: string) {
-    setMeetingName(name);
-    const known = meetingNameHistory.find((entry) => entry.title === name);
-    if (known) setTopicSlug(known.slug);
-  }
 
   useEffect(() => {
     setSettings(loadSettings());
@@ -200,10 +193,10 @@ export function App() {
       transcript: transcript || undefined,
       summaryMarkdown: summary,
     });
-    downloadMarkdown(suggestFilename(date, topicSlug), content);
+    downloadMarkdown(suggestFilename(date), content);
 
     if (meetingName) {
-      rememberMeetingName(meetingName, topicSlug);
+      rememberMeetingName(meetingName);
       setMeetingNameHistory(loadMeetingNameHistory());
     }
     if (project) {
@@ -260,26 +253,26 @@ export function App() {
             <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
           </label>
           <label className="field">
-            タグ(カンマ区切り)
+            タグ
             <input type="text" value={tags} onChange={(e) => setTags(e.target.value)} />
           </label>
           <label className="field">
-            会議名(過去に入力した定例名がリストに出ます。初回は自由入力してください)
+            会議名
             <input
               type="text"
               list="meeting-name-options"
               value={meetingName}
-              onChange={(e) => handleMeetingNameChange(e.target.value)}
+              onChange={(e) => setMeetingName(e.target.value)}
               placeholder="定例会議名など"
             />
             <datalist id="meeting-name-options">
               {meetingNameHistory.map((entry) => (
-                <option key={entry.slug} value={entry.title} />
+                <option key={entry} value={entry} />
               ))}
             </datalist>
           </label>
           <label className="field">
-            プロジェクト(任意、過去の入力がリストに出ます)
+            プロジェクト
             <input type="text" list="project-options" value={project} onChange={(e) => setProject(e.target.value)} />
             <datalist id="project-options">
               {projectHistory.map((p) => (
@@ -287,18 +280,10 @@ export function App() {
               ))}
             </datalist>
           </label>
-          <label className="field">
-            ファイル名(スラッグ、会議名選択で自動入力)
-            <input
-              type="text"
-              value={topicSlug}
-              onChange={(e) => setTopicSlug(e.target.value)}
-              placeholder="meeting"
-            />
-          </label>
         </div>
         <p className="hint">
-          ダウンロード後、メール添付やクラウドストレージなど任意の方法でVaultのある端末に転送し、Meetings/ フォルダへ配置してください(このPCからの自動同期は行いません)。
+          ファイル名は日付のみの仮名でダウンロードされます。Vaultの Meetings/
+          フォルダへ配置する際に、会議名から適切なファイル名へリネームしてください。ダウンロード後はメール添付やクラウドストレージなど任意の方法でVaultのある端末に転送し、配置してください(このPCからの自動同期は行いません)。
         </p>
         <div className="row">
           <button type="button" className="primary" disabled={!summary} onClick={handleDownload}>

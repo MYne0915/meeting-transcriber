@@ -48,15 +48,15 @@ export function buildMeetingMinutesMarkdown(options: ExportOptions): string {
   return `${frontmatter}\n${body}${transcriptSection}\n`;
 }
 
-/** Matches the existing Vault convention: YYYY-MM-DD-topic-meeting-minutes.md */
-export function suggestFilename(date: string, topicSlug: string): string {
-  const safeSlug =
-    topicSlug
-      .trim()
-      .toLowerCase()
-      .replace(/[^a-z0-9-]+/g, "-")
-      .replace(/^-+|-+$/g, "") || "meeting";
-  return `${date}-${safeSlug}-meeting-minutes.md`;
+/**
+ * Generic placeholder filename (matches the Vault's existing convention for notes with no
+ * topic slug, e.g. "2026-05-29-meeting-minutes.md"). This app can't reliably romanize a
+ * Japanese meeting name into an English slug without a large dictionary, so the file is
+ * renamed to the proper "date-topic-meeting-minutes.md" form when it's imported into the
+ * Vault instead.
+ */
+export function suggestFilename(date: string): string {
+  return `${date}-meeting-minutes.md`;
 }
 
 export function downloadMarkdown(filename: string, content: string): void {
