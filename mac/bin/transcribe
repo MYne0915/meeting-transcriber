@@ -1,0 +1,4 @@
+#!/bin/sh
+# Node 24 runs TypeScript directly via type stripping, so this CLI needs no build step
+# and no npm dependencies.
+exec node "$(dirname "$0")/../src/cli.ts" "$@"
