@@ -18,15 +18,19 @@ function loadJson<T>(key: string, fallback: T): T {
   }
 }
 
+function remember(key: string, value: string): void {
+  if (!value.trim()) return;
+  const history = loadJson<string[]>(key, []).filter((entry) => entry !== value);
+  history.unshift(value);
+  localStorage.setItem(key, JSON.stringify(history.slice(0, MAX_HISTORY)));
+}
+
 export function loadMeetingNameHistory(): string[] {
   return loadJson<string[]>(MEETING_NAME_HISTORY_KEY, []);
 }
 
 export function rememberMeetingName(title: string): void {
-  if (!title.trim()) return;
-  const history = loadMeetingNameHistory().filter((entry) => entry !== title);
-  history.unshift(title);
-  localStorage.setItem(MEETING_NAME_HISTORY_KEY, JSON.stringify(history.slice(0, MAX_HISTORY)));
+  remember(MEETING_NAME_HISTORY_KEY, title);
 }
 
 export function loadProjectHistory(): string[] {
@@ -34,10 +38,7 @@ export function loadProjectHistory(): string[] {
 }
 
 export function rememberProject(project: string): void {
-  if (!project.trim()) return;
-  const history = loadProjectHistory().filter((p) => p !== project);
-  history.unshift(project);
-  localStorage.setItem(PROJECT_HISTORY_KEY, JSON.stringify(history.slice(0, MAX_HISTORY)));
+  remember(PROJECT_HISTORY_KEY, project);
 }
 
 /** Last-used tags string, so the field defaults to what this user typed last time instead of a hardcoded value. */
