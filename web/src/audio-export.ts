@@ -125,15 +125,45 @@ export interface RecordingMetadata {
   tags: string[];
 }
 
+/**
+ * The mac CLI ([[archive.ts]]'s AUDIO_EXTENSIONS) identifies segment files by extension, so an
+ * uploaded MP3/M4A/WAV must keep its real extension rather than being forced into .webm.
+ */
+const MIME_EXTENSIONS: Record<string, string> = {
+  "audio/webm": "webm",
+  "audio/mp4": "m4a",
+  "audio/mpeg": "mp3",
+  "audio/mp3": "mp3",
+  "audio/wav": "wav",
+  "audio/x-wav": "wav",
+  "audio/wave": "wav",
+  "audio/ogg": "ogg",
+  "audio/flac": "flac",
+  "audio/x-flac": "flac",
+};
+
+export function extensionForMimeType(mimeType: string | undefined): string {
+  if (!mimeType) return "webm";
+  const base = mimeType.split(";")[0].trim().toLowerCase();
+  return MIME_EXTENSIONS[base] ?? "webm";
+}
+
+/** Preferred over MIME sniffing for uploaded files, since the browser's reported type can be empty. */
+export function extensionFromFilename(name: string): string | undefined {
+  const match = /\.([a-zA-Z0-9]+)$/.exec(name);
+  return match?.[1]?.toLowerCase();
+}
+
 export async function downloadRecordingAsZip(
   segments: Blob[],
   metadata: RecordingMetadata,
   filename: string,
+  segmentExtension: string,
 ): Promise<void> {
   const entries: ZipEntry[] = [
     { name: "meta.json", blob: new Blob([JSON.stringify(metadata, null, 2)]) },
     ...segments.map((blob, i) => ({
-      name: `segment-${(i + 1).toString().padStart(2, "0")}.webm`,
+      name: `segment-${(i + 1).toString().padStart(2, "0")}.${segmentExtension}`,
       blob,
     })),
   ];
