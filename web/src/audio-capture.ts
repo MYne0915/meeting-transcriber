@@ -12,6 +12,8 @@ export interface CaptureOptions {
 export interface CaptureSession {
   /** Stops all tracks and the recorder, returns each recorded segment as an independent Blob. */
   stop: () => Promise<Blob[]>;
+  /** The MIME type MediaRecorder actually used, so the exporter can pick a matching file extension. */
+  mimeType: string | undefined;
 }
 
 const RECORDER_MIME_CANDIDATES = [
@@ -127,5 +129,5 @@ export async function startCapture(options: CaptureOptions): Promise<CaptureSess
     return segments;
   };
 
-  return { stop };
+  return { stop, mimeType };
 }

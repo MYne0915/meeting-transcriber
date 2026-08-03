@@ -13,9 +13,7 @@ export function RecorderPanel({ recording, elapsedLabel, onStart, onStop }: Prop
   const [includeMic, setIncludeMic] = useState(true);
 
   return (
-    <section className="card">
-      <h2>1. 録音</h2>
-
+    <>
       <label className="field checkbox">
         <input
           type="checkbox"
@@ -57,6 +55,6 @@ export function RecorderPanel({ recording, elapsedLabel, onStart, onStop }: Prop
           </button>
         )}
       </div>
-    </section>
+    </>
   );
 }
