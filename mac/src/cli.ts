@@ -4,7 +4,7 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { type RecordingMetadata, extractSegments, readMetadata } from "./archive.ts";
 import { buildTranscriptNote, transcriptFilename } from "./markdown.ts";
-import { buildCombinedWav, checkDependencies, ensureModel, transcribeWav } from "./whisper.ts";
+import { checkDependencies, convertToWav, ensureModel, transcribeWav } from "./whisper.ts";
 
 const DEFAULT_GLOSSARY = join(homedir(), ".config", "meeting-transcriber", "glossary.txt");
 
@@ -142,16 +142,33 @@ async function main(): Promise<void> {
   try {
     const details = resolveDetails(flags, readMetadata(dir));
     console.log(`会議名: ${details.meetingName ?? "(未設定)"} / 日付: ${details.date}`);
-    console.log(`セグメント${segments.length}件を連結して文字起こしします`);
+    console.log(`セグメント${segments.length}件を順に文字起こしします`);
 
     const startedAll = Date.now();
-    const wavPath = join(dir, "combined.wav");
-    buildCombinedWav(
-      segments.map((segment) => segment.path),
-      wavPath,
-    );
+    const transcriptParts: string[] = [];
+    let failedSegments = 0;
 
-    const transcript = transcribeWav(wavPath, { modelPath, glossary, threads: flags.threads });
+    for (const [index, segment] of segments.entries()) {
+      const label = `セグメント${index + 1}/${segments.length}`;
+      console.log(`\n--- ${label} ---`);
+
+      const wavPath = join(dir, `segment-${index + 1}.wav`);
+      convertToWav(segment.path, wavPath);
+      const { text, loopDetected } = transcribeWav(wavPath, {
+        modelPath,
+        glossary,
+        threads: flags.threads,
+      });
+      rmSync(wavPath, { force: true });
+
+      if (loopDetected) {
+        failedSegments++;
+        console.warn(`⚠ ${label}: 同じ発言を繰り返すループを検出したため、該当箇所を圧縮しました`);
+      }
+      transcriptParts.push(text);
+    }
+
+    const transcript = transcriptParts.join("\n\n").trim();
     if (!transcript) throw new Error("文字起こし結果が空でした");
 
     const outputPath = resolveOutputPath(flags, details.date);
@@ -162,6 +179,9 @@ async function main(): Promise<void> {
     );
 
     console.log(`\n合計 ${formatDuration(Date.now() - startedAll)}`);
+    if (failedSegments > 0) {
+      console.log(`${failedSegments}件のセグメントで文字起こしが不安定でした。出力ファイル内の[...]マーカーの箇所を確認してください。`);
+    }
     console.log(`書き出しました: ${outputPath}`);
     console.log("\nこの後はClaudeに「このファイルを議事録にしてVaultに入れて」と頼んでください。");
   } finally {

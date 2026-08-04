@@ -1,4 +1,4 @@
-import { execFileSync, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, renameSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -12,6 +12,15 @@ const MODEL_FILE = "ggml-large-v3-turbo.bin";
 const MODEL_URL = `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/${MODEL_FILE}`;
 /** The published model is ~1.6 GB; anything much smaller means a truncated or failed download. */
 const MIN_MODEL_BYTES = 1_000_000_000;
+
+/**
+ * whisper.cpp occasionally gets stuck repeating the same line dozens or hundreds of times on
+ * noisy or overlapping-speech audio (observed: the same short phrase emitted 219 times in a row
+ * on a real meeting recording). This many identical consecutive sentences is treated as that
+ * loop rather than genuine repeated speech, and collapsed after the fact — see collapseRepeats
+ * for why this can't be caught by watching the process live instead.
+ */
+const LOOP_REPEAT_THRESHOLD = 8;
 
 function requireBinary(name: string, installHint: string): void {
   if (spawnSync("which", [name], { stdio: "ignore" }).status !== 0) {
@@ -46,34 +55,21 @@ export function ensureModel(): string {
 }
 
 /**
- * Joins every recorded segment into one 16 kHz mono WAV (the only format whisper.cpp accepts).
+ * Converts one recorded segment to the 16 kHz mono WAV whisper.cpp requires.
  *
- * Joining first, rather than transcribing segment by segment, matters twice over: whisper.cpp
- * reloads the 1.6 GB model on every invocation (~4.4s each, so ~1 minute wasted on a 2-hour
- * meeting), and it carries decoding context across a file, which segment boundaries would cut.
+ * Segments are transcribed one at a time (not joined into one file first) so that a
+ * repetition loop (see LOOP_REPEAT_THRESHOLD) is caught and cut off within a single ~10-minute
+ * segment instead of derailing transcription of the whole meeting. The cost is whisper.cpp
+ * reloading its 1.6 GB model on every invocation (~4.4s each, so ~1 minute on a 2-hour
+ * meeting's 12 segments), which is worth paying for that fault isolation.
  */
-export function buildCombinedWav(inputPaths: string[], outputPath: string): void {
-  const inputs = inputPaths.flatMap((path) => ["-i", path]);
-  const filter = `${inputPaths.map((_, i) => `[${i}:a]`).join("")}concat=n=${inputPaths.length}:v=0:a=1[out]`;
-
-  try {
-    execFileSync(
-      "ffmpeg",
-      [
-        "-y",
-        ...inputs,
-        "-filter_complex", filter,
-        "-map", "[out]",
-        "-ar", "16000",
-        "-ac", "1",
-        "-c:a", "pcm_s16le",
-        outputPath,
-      ],
-      { stdio: "ignore" },
-    );
-  } catch {
-    throw new Error("音声の変換・連結に失敗しました");
-  }
+export function convertToWav(inputPath: string, outputPath: string): void {
+  const result = spawnSync(
+    "ffmpeg",
+    ["-y", "-i", inputPath, "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le", outputPath],
+    { stdio: "ignore" },
+  );
+  if (result.status !== 0) throw new Error(`音声の変換に失敗しました: ${inputPath}`);
 }
 
 export interface TranscribeOptions {
@@ -83,7 +79,24 @@ export interface TranscribeOptions {
   threads?: number;
 }
 
-export function transcribeWav(wavPath: string, options: TranscribeOptions): string {
+export interface TranscribeResult {
+  text: string;
+  /** True if a repetition loop was found and collapsed in the output. */
+  loopDetected: boolean;
+}
+
+/**
+ * Runs whisper.cpp on one WAV and returns its transcript, with any repetition loop collapsed.
+ *
+ * whisper.cpp reports progress as timestamped lines on stderr; -inherit- lets that reach the
+ * console as before, purely for visibility. Watching those lines live to kill the process
+ * early (an earlier approach here) does not work: whisper.cpp's stdio is fully buffered once
+ * it isn't a TTY, so on a real run the entire transcript — including a 219-line repetition
+ * loop observed on a real meeting recording — arrived in one burst right as the process
+ * exited. By the time a repeat was visible, there was nothing left to cut off. So the loop is
+ * instead detected and collapsed after the process has already finished, in collapseRepeats.
+ */
+export function transcribeWav(wavPath: string, options: TranscribeOptions): TranscribeResult {
   const outputPrefix = wavPath.replace(/\.wav$/, "");
   const args = [
     "-m", options.modelPath,
@@ -91,18 +104,17 @@ export function transcribeWav(wavPath: string, options: TranscribeOptions): stri
     "-l", "ja",
     "-otxt",
     "-of", outputPrefix,
-    // -nt is omitted so the console gets a timestamped stream that doubles as a progress display.
   ];
   if (options.threads) args.push("-t", String(options.threads));
   if (options.glossary) args.push("--prompt", options.glossary);
 
-  // whisper.cpp reports progress on stderr; let it through so long runs stay visible.
   const result = spawnSync("whisper-cli", args, { stdio: ["ignore", "ignore", "inherit"] });
   if (result.status !== 0) throw new Error("文字起こしに失敗しました");
 
   const textPath = `${outputPrefix}.txt`;
   if (!existsSync(textPath)) throw new Error("文字起こし結果のファイルが生成されませんでした");
-  return breakIntoSentences(readFileSync(textPath, "utf8"));
+
+  return collapseRepeats(breakIntoSentences(readFileSync(textPath, "utf8")));
 }
 
 /**
@@ -118,4 +130,33 @@ function breakIntoSentences(text: string): string {
     .map((sentence) => sentence.trim())
     .filter(Boolean)
     .join("\n");
+}
+
+/**
+ * Collapses runs of LOOP_REPEAT_THRESHOLD+ identical consecutive sentences (whisper.cpp stuck
+ * repeating itself) down to one copy plus a marker, so a hallucination loop doesn't bury an
+ * otherwise-fine transcript in hundreds of duplicate lines.
+ */
+function collapseRepeats(text: string): TranscribeResult {
+  const lines = text.split("\n");
+  const collapsed: string[] = [];
+  let loopDetected = false;
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+    let runLength = 1;
+    while (i + runLength < lines.length && lines[i + runLength] === line) runLength++;
+
+    collapsed.push(line);
+    if (runLength >= LOOP_REPEAT_THRESHOLD) {
+      loopDetected = true;
+      collapsed.push(`[同一の発言が${runLength}回繰り返されたため以降を省略しました。この付近は文字起こしが不安定だった可能性があります]`);
+    } else {
+      for (let j = 1; j < runLength; j++) collapsed.push(line);
+    }
+    i += runLength;
+  }
+
+  return { text: collapsed.join("\n"), loopDetected };
 }
