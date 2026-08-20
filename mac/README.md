@@ -15,7 +15,7 @@ API料金もかかりません。要約とノートの整形はこの後 Claude 
 brew install whisper-cpp ffmpeg
 ```
 
-文字起こしモデル(`ggml-large-v3-turbo.bin`、約1.6GB)は初回実行時に
+文字起こしモデル(既定は`ggml-large-v3-turbo.bin`、約1.6GB)は初回実行時に
 `~/.cache/meeting-transcriber/models/` へ自動でダウンロードされます。
 
 ## 使い方
@@ -41,6 +41,12 @@ ln -s "$PWD/mac/bin/transcribe" /usr/local/bin/transcribe
 | `--out` | zipと同じディレクトリ | 出力先(ディレクトリまたは `.md` パス) |
 | `--glossary` | `~/.config/meeting-transcriber/glossary.txt` | 固有名詞リスト |
 | `--threads` | whisper.cppの既定 | スレッド数 |
+| `--model` | `large-v3-turbo` | 文字起こしモデル。`large-v3-turbo` / `large-v3` / `medium` / `small` |
+
+`large-v3-turbo`は速いが、ノイズや声の重なりがある音声で発言のループ(ハルシネーション)を
+起こしやすい。ループが多発する場合は`--model medium`など他のモデルを試す。
+モデルごとに別ファイルとしてキャッシュされるため、切り替えるたびに再ダウンロードにはならない
+(初回のみダウンロード)。
 
 出力は `YYYY-MM-DD-transcript.md` です。要約・固有名詞の照合・ファイル名の確定・保管先への配置は
 Claude に頼んでください。

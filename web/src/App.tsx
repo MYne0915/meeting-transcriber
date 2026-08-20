@@ -29,6 +29,7 @@ export function App() {
   const [sourceMode, setSourceMode] = useState<"record" | "upload">("record");
   const [recording, setRecording] = useState(false);
   const [elapsedMs, setElapsedMs] = useState(0);
+  const [analyser, setAnalyser] = useState<AnalyserNode | null>(null);
   const sessionRef = useRef<CaptureSession | null>(null);
   const recordingStartRef = useRef(0);
   const [audioSegments, setAudioSegments] = useState<Blob[]>([]);
@@ -60,6 +61,7 @@ export function App() {
       setElapsedMs(0);
       setAudioSegments([]);
       setRecordedDate(todayIso());
+      setAnalyser(session.analyser);
       setRecording(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -77,6 +79,7 @@ export function App() {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       sessionRef.current = null;
+      setAnalyser(null);
       setRecording(false);
     }
   }
@@ -171,6 +174,7 @@ export function App() {
           <RecorderPanel
             recording={recording}
             elapsedLabel={formatElapsed(elapsedMs)}
+            analyser={analyser}
             onStart={handleStart}
             onStop={handleStop}
           />

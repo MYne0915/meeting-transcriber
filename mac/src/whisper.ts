@@ -8,10 +8,23 @@ import { join } from "node:path";
  * Apple Silicon. Nothing is uploaded, and there is no per-minute cost.
  */
 const MODEL_DIR = join(homedir(), ".cache", "meeting-transcriber", "models");
-const MODEL_FILE = "ggml-large-v3-turbo.bin";
-const MODEL_URL = `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/${MODEL_FILE}`;
-/** The published model is ~1.6 GB; anything much smaller means a truncated or failed download. */
-const MIN_MODEL_BYTES = 1_000_000_000;
+
+/**
+ * turbo is distilled for speed and is more prone to repetition loops on noisy or ambiguous
+ * audio than the plain multilingual models (observed directly: a real recording produced
+ * hallucination loops on every segment under turbo). medium/small are offered as fallbacks to
+ * try when that happens, at the cost of slower transcription.
+ */
+const MODELS = {
+  "large-v3-turbo": { file: "ggml-large-v3-turbo.bin", minBytes: 1_500_000_000 },
+  "large-v3": { file: "ggml-large-v3.bin", minBytes: 2_800_000_000 },
+  medium: { file: "ggml-medium.bin", minBytes: 1_400_000_000 },
+  small: { file: "ggml-small.bin", minBytes: 400_000_000 },
+} as const;
+
+export type ModelName = keyof typeof MODELS;
+export const DEFAULT_MODEL: ModelName = "large-v3-turbo";
+export const MODEL_NAMES = Object.keys(MODELS) as ModelName[];
 
 /**
  * whisper.cpp occasionally gets stuck repeating the same line dozens or hundreds of times on
@@ -34,20 +47,22 @@ export function checkDependencies(): void {
 }
 
 /** Downloads the model on first use into a cache dir, so setup is a single command for the user. */
-export function ensureModel(): string {
-  const modelPath = join(MODEL_DIR, MODEL_FILE);
-  if (existsSync(modelPath) && statSync(modelPath).size >= MIN_MODEL_BYTES) return modelPath;
+export function ensureModel(modelName: ModelName = DEFAULT_MODEL): string {
+  const { file, minBytes } = MODELS[modelName];
+  const modelUrl = `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/${file}`;
+  const modelPath = join(MODEL_DIR, file);
+  if (existsSync(modelPath) && statSync(modelPath).size >= minBytes) return modelPath;
 
   mkdirSync(MODEL_DIR, { recursive: true });
-  console.log(`文字起こしモデルをダウンロードします (約1.6GB、初回のみ)\n  ${modelPath}`);
+  console.log(`文字起こしモデルをダウンロードします (${modelName}、初回のみ)\n  ${modelPath}`);
 
   // Download to a temp name first so an interrupted download is never mistaken for a valid model.
   const partial = `${modelPath}.partial`;
-  const result = spawnSync("curl", ["-L", "--fail", "--progress-bar", "-o", partial, MODEL_URL], {
+  const result = spawnSync("curl", ["-L", "--fail", "--progress-bar", "-o", partial, modelUrl], {
     stdio: "inherit",
   });
   if (result.status !== 0) throw new Error("モデルのダウンロードに失敗しました");
-  if (statSync(partial).size < MIN_MODEL_BYTES) {
+  if (statSync(partial).size < minBytes) {
     throw new Error("ダウンロードしたモデルのサイズが想定より小さいです。再実行してください");
   }
   renameSync(partial, modelPath);

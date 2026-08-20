@@ -136,3 +136,40 @@ textarea {
   grid-template-columns: 1fr 1fr;
   gap: 10px;
 }
+
+.level-meter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 10px;
+}
+
+.level-meter-track {
+  flex: 1;
+  height: 8px;
+  background: #eee;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.level-meter-fill {
+  height: 100%;
+  background: #16a34a;
+  border-radius: 4px;
+  transition: width 80ms linear;
+}
+
+.level-meter-fill.silent {
+  background: #d1d5db;
+}
+
+.level-meter-label {
+  font-size: 12px;
+  color: #16a34a;
+  width: 4.5em;
+  flex-shrink: 0;
+}
+
+.level-meter-label.silent {
+  color: #92400e;
+}

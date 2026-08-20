@@ -4,7 +4,15 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { type RecordingMetadata, extractSegments, readMetadata } from "./archive.ts";
 import { buildTranscriptNote, transcriptFilename } from "./markdown.ts";
-import { checkDependencies, convertToWav, ensureModel, transcribeWav } from "./whisper.ts";
+import {
+  checkDependencies,
+  convertToWav,
+  DEFAULT_MODEL,
+  ensureModel,
+  type ModelName,
+  MODEL_NAMES,
+  transcribeWav,
+} from "./whisper.ts";
 
 const DEFAULT_GLOSSARY = join(homedir(), ".config", "meeting-transcriber", "glossary.txt");
 
@@ -25,6 +33,8 @@ const USAGE = `使い方: transcribe <録音zip> [オプション]
   --glossary <ファイル>  誤変換しやすい固有名詞リスト
                          既定: ${DEFAULT_GLOSSARY}
   --threads <n>          whisper.cppのスレッド数
+  --model <名前>         文字起こしモデル (${MODEL_NAMES.join(" / ")})
+                         既定: ${DEFAULT_MODEL}
   -h, --help             この使い方を表示`;
 
 interface Flags {
@@ -36,6 +46,7 @@ interface Flags {
   outPath?: string;
   glossaryPath: string;
   threads?: number;
+  model: ModelName;
 }
 
 interface Resolved {
@@ -77,6 +88,10 @@ function parseArgs(argv: string[]): Flags {
 
   const rawTags = flags.get("tags");
   const threads = flags.get("threads");
+  const rawModel = flags.get("model");
+  if (rawModel !== undefined && !MODEL_NAMES.includes(rawModel as ModelName)) {
+    throw new Error(`--model は ${MODEL_NAMES.join(" / ")} のいずれかを指定してください`);
+  }
 
   return {
     zipPath,
@@ -90,6 +105,7 @@ function parseArgs(argv: string[]): Flags {
     outPath: flags.get("out"),
     glossaryPath: flags.get("glossary") ?? DEFAULT_GLOSSARY,
     threads: threads ? Number(threads) : undefined,
+    model: (rawModel as ModelName | undefined) ?? DEFAULT_MODEL,
   };
 }
 
@@ -133,7 +149,7 @@ async function main(): Promise<void> {
 
   const flags = parseArgs(argv);
   checkDependencies();
-  const modelPath = ensureModel();
+  const modelPath = ensureModel(flags.model);
 
   const glossary = readGlossary(flags.glossaryPath);
   if (glossary) console.log(`固有名詞リストを読み込みました: ${flags.glossaryPath}`);
@@ -141,7 +157,7 @@ async function main(): Promise<void> {
   const { dir, segments } = extractSegments(flags.zipPath);
   try {
     const details = resolveDetails(flags, readMetadata(dir));
-    console.log(`会議名: ${details.meetingName ?? "(未設定)"} / 日付: ${details.date}`);
+    console.log(`会議名: ${details.meetingName ?? "(未設定)"} / 日付: ${details.date} / モデル: ${flags.model}`);
     console.log(`セグメント${segments.length}件を順に文字起こしします`);
 
     const startedAll = Date.now();

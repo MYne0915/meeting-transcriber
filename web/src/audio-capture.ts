@@ -14,6 +14,12 @@ export interface CaptureSession {
   stop: () => Promise<Blob[]>;
   /** The MIME type MediaRecorder actually used, so the exporter can pick a matching file extension. */
   mimeType: string | undefined;
+  /**
+   * Taps the exact mixed signal being recorded, so the UI can show a live level meter. A dead
+   * mic or missing system-audio permission then reads as a flat meter during recording instead
+   * of only being discovered after transcription (see recording-audio-level-indicator).
+   */
+  analyser: AnalyserNode;
 }
 
 const RECORDER_MIME_CANDIDATES = [
@@ -69,8 +75,12 @@ export async function startCapture(options: CaptureOptions): Promise<CaptureSess
 
   const audioContext = new AudioContext();
   const destination = audioContext.createMediaStreamDestination();
+  // The analyser sits between the sources and the recording destination (not a side branch),
+  // so what it measures is exactly the mixed signal that ends up in the recorded file.
+  const analyser = audioContext.createAnalyser();
+  analyser.connect(destination);
   rawStreams.forEach((stream) => {
-    audioContext.createMediaStreamSource(stream).connect(destination);
+    audioContext.createMediaStreamSource(stream).connect(analyser);
   });
 
   const mimeType = pickMimeType();
@@ -129,5 +139,5 @@ export async function startCapture(options: CaptureOptions): Promise<CaptureSess
     return segments;
   };
 
-  return { stop, mimeType };
+  return { stop, mimeType, analyser };
 }

@@ -1,14 +1,16 @@
 import { useState } from "react";
 import type { CaptureOptions } from "../audio-capture";
+import { LevelMeter } from "./LevelMeter";
 
 interface Props {
   recording: boolean;
   elapsedLabel: string;
+  analyser: AnalyserNode | null;
   onStart: (options: CaptureOptions) => void;
   onStop: () => void;
 }
 
-export function RecorderPanel({ recording, elapsedLabel, onStart, onStop }: Props) {
+export function RecorderPanel({ recording, elapsedLabel, analyser, onStart, onStop }: Props) {
   const [includeSystemAudio, setIncludeSystemAudio] = useState(true);
   const [includeMic, setIncludeMic] = useState(true);
 
@@ -55,6 +57,8 @@ export function RecorderPanel({ recording, elapsedLabel, onStart, onStop }: Prop
           </button>
         )}
       </div>
+
+      {recording && <LevelMeter analyser={analyser} active={recording} />}
     </>
   );
 }
